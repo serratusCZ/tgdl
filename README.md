@@ -207,16 +207,18 @@ tgdl get <link> -v     # info-level
 tgdl get <link> -vv    # debug-level (full Telethon trace)
 ```
 
-Reset or fully log out:
+Log out or fully reset:
 
 ```bash
-tgdl logout           # revoke the session on Telegram's servers, then clear creds
-tgdl reset            # local-only: clear creds without revoking (server session lives on)
+tgdl logout           # revoke session server-side + drop the local session
+                      #   (keeps api_id/api_hash, so re-login is just phone + code)
+tgdl reset            # wipe ALL local creds incl. api_id/api_hash; no server-side revoke
 ```
 
 Prefer `tgdl logout` if a session may have leaked — it invalidates the string
-everywhere. Use `tgdl reset` only when the server is unreachable or you'll
-re-`setup` immediately.
+everywhere, and logging back in only needs `tgdl setup` → reuse api creds →
+phone + code. Use `tgdl reset` only to remove the api credentials too (e.g. full
+uninstall) or when the server is unreachable.
 
 ---
 
@@ -262,7 +264,8 @@ need those.
 ## Uninstall
 
 ```bash
-tgdl logout                             # revoke session server-side + clear Keychain
+tgdl logout                             # revoke session server-side
+tgdl reset                              # remove the remaining api_id/api_hash
 rm ~/bin/tgdl                           # remove the CLI you moved
 rm -f ~/.config/tgdl/home               # remove the recorded path
 # delete this repo directory when done

@@ -30,23 +30,27 @@ SERVICE = "tgdl"
 KEYS = ("api_id", "api_hash", "session")
 
 
+def _delete(key: str) -> bool:
+    try:
+        keyring.delete_password(SERVICE, key)
+        return True
+    except keyring.errors.PasswordDeleteError:
+        return False
+
+
 def reset() -> None:
-    removed = 0
-    for key in KEYS:
-        try:
-            keyring.delete_password(SERVICE, key)
-            removed += 1
-        except keyring.errors.PasswordDeleteError:
-            pass
+    removed = sum(_delete(key) for key in KEYS)
     print(f"Removed {removed} stored credential item(s) from the Keychain.")
 
 
 async def logout() -> None:
-    """Revoke the session on Telegram's servers, then clear the Keychain.
+    """Revoke the session on Telegram's servers and drop the local session.
 
-    Unlike `reset` (local-only), this invalidates the session everywhere, so a
-    leaked session string becomes useless. Falls back to a local clear if the
-    session is already gone or the server is unreachable.
+    Only the session is cleared; api_id/api_hash are kept so logging back in
+    needs just phone + code (run `tgdl reset` to wipe those too). Unlike `reset`
+    (local-only), this invalidates the session everywhere, so a leaked session
+    string becomes useless. Falls back to a local clear if the session is
+    already gone or the server is unreachable.
     """
     api_id = keyring.get_password(SERVICE, "api_id")
     api_hash = keyring.get_password(SERVICE, "api_hash")
@@ -67,7 +71,22 @@ async def logout() -> None:
     else:
         print("No stored session found.")
 
-    reset()
+    _delete("session")
+    if api_id and api_hash:
+        print("Cleared the local session; kept api_id/api_hash for a quick re-login.")
+        print("Log back in with:  tgdl setup   (reuses stored api creds — just phone + code)")
+    else:
+        print("Cleared the local session.")
+
+
+def _prompt_api() -> tuple[str, str]:
+    api_id = input("api_id: ").strip()
+    if not api_id.isdigit():
+        sys.exit("api_id must be numeric.")
+    api_hash = getpass.getpass("api_hash (hidden input): ").strip()
+    if len(api_hash) < 20:
+        sys.exit("api_hash looks too short; expected a 32-char hex string.")
+    return api_id, api_hash
 
 
 async def setup() -> None:
@@ -78,16 +97,18 @@ async def setup() -> None:
     )
 
     if keyring.get_password(SERVICE, "session"):
-        if input("Credentials already exist. Overwrite? [y/N] ").strip().lower() != "y":
+        if input("A session already exists. Overwrite? [y/N] ").strip().lower() != "y":
             print("Aborted.")
             return
 
-    api_id = input("api_id: ").strip()
-    if not api_id.isdigit():
-        sys.exit("api_id must be numeric.")
-    api_hash = getpass.getpass("api_hash (hidden input): ").strip()
-    if len(api_hash) < 20:
-        sys.exit("api_hash looks too short; expected a 32-char hex string.")
+    stored_id = keyring.get_password(SERVICE, "api_id")
+    stored_hash = keyring.get_password(SERVICE, "api_hash")
+    if stored_id and stored_hash and \
+            input(f"Reuse stored api_id {stored_id}? [Y/n] ").strip().lower() in ("", "y", "yes"):
+        api_id, api_hash = stored_id, stored_hash
+    else:
+        api_id, api_hash = _prompt_api()
+
     phone = input("phone (international format, e.g. +14155550123): ").strip()
 
     client = TelegramClient(StringSession(), int(api_id), api_hash)

@@ -54,8 +54,10 @@ Defense in depth: `.gitignore` still blocks `*.session`, `.env*`, and
 If you suspect the session leaked, or you're done using the tool:
 
 1. **`tgdl logout`** — revokes the session on Telegram's servers (`auth.logOut`)
-   and then clears the Keychain. This immediately invalidates the string
-   everywhere — the most important step, and now a single command.
+   and drops the local session. This immediately invalidates the string
+   everywhere — the most important step, and a single command. It keeps
+   `api_id`/`api_hash` (not account-equivalent) so you can log back in with just
+   phone + code; run **`tgdl reset`** afterwards if you also want those gone.
    - If your Mac can't reach Telegram, do it from another device instead:
      **Telegram app → Settings → Devices (Active Sessions)** → terminate the
      session, then `tgdl reset` to clear the local Keychain items.

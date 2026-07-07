@@ -53,8 +53,8 @@ Usage:
   tgdl list                          list your chats as "id<TAB>name"
   tgdl get <link> [<link> ...]       download the video in each message
   tgdl get --chat <chat> --range A B download message ids A..B (inclusive)
-  tgdl logout                        revoke the session server-side, then clear creds
-  tgdl reset                         clear stored creds locally only (no revoke)
+  tgdl logout                        revoke session server-side; keep api creds for re-login
+  tgdl reset                         wipe ALL stored creds locally (no server-side revoke)
   tgdl version                       print the version
   tgdl help                          show this help
 

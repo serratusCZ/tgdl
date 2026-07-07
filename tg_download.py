@@ -46,7 +46,7 @@ from telethon.tl.types import PeerChannel
 from tqdm import tqdm
 
 SERVICE = "tgdl"
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 # Telegram serves file parts on 4 KiB boundaries; resume offsets must align to it.
 CHUNK_ALIGN = 4096
 # Transient failures worth retrying; the .part resume makes each retry cheap.
