@@ -21,6 +21,7 @@ Credentials are read from the macOS Keychain (populated by `tgdl setup`).
 Examples:
     tgdl get https://t.me/c/1234567890/42
     tgdl get https://t.me/somechannel/99 --out ~/Movies/tg
+    tgdl get https://t.me/somechannel/352?comment=955   # video in a comment
     tgdl get --chat https://t.me/c/1234567890 --range 100 180
     tgdl list
     tgdl check
@@ -34,11 +35,13 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import keyring
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, ServerError
 from telethon.sessions import StringSession
+from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.types import PeerChannel
 from tqdm import tqdm
 
@@ -50,10 +53,7 @@ CHUNK_ALIGN = 4096
 TRANSIENT_ERRORS = (OSError, asyncio.TimeoutError, ServerError)
 MAX_RETRIES = 5
 
-# https://t.me/c/<internal_id>/<optional_topic_id>/<msg_id>
-LINK_C = re.compile(r"(?:https?://)?t\.me/c/(\d+)/(?:\d+/)?(\d+)")
-# https://t.me/<username>/<optional_topic_id>/<msg_id>
-LINK_PUB = re.compile(r"(?:https?://)?t\.me/([A-Za-z0-9_]{4,})/(?:\d+/)?(\d+)")
+TG_HOSTS = ("t.me", "telegram.me", "telegram.dog")
 
 
 def load_creds() -> tuple[int, str, str]:
@@ -65,15 +65,46 @@ def load_creds() -> tuple[int, str, str]:
     return int(api_id), api_hash, session
 
 
-def parse_link(link: str) -> tuple[str, object, int]:
+def parse_link(link: str) -> tuple[str, object, int, int | None]:
+    """Return (kind, ref, msg_id, comment_id).
+
+    kind is "channel" (ref = internal id from /c/<id>) or "username" (ref = name).
+    comment_id is set for links like .../352?comment=955, where the media lives
+    in the channel's linked discussion group rather than in post 352 itself.
+    """
     link = link.strip()
-    m = LINK_C.match(link)
-    if m:
-        return ("channel", int(m.group(1)), int(m.group(2)))
-    m = LINK_PUB.match(link)
-    if m:
-        return ("username", m.group(1), int(m.group(2)))
+    u = urlparse(link if "://" in link else "https://" + link)
+    if u.netloc.lower() not in TG_HOSTS:
+        raise ValueError(f"Unrecognized Telegram message link: {link}")
+
+    comment = None
+    q = parse_qs(u.query)
+    if "comment" in q:
+        try:
+            comment = int(q["comment"][0])
+        except (ValueError, IndexError):
+            comment = None
+
+    parts = [p for p in u.path.split("/") if p]
+    # /c/<internal_id>/[<topic_id>/]<msg_id>
+    if len(parts) >= 3 and parts[0] == "c" and parts[1].isdigit() and parts[-1].isdigit():
+        return ("channel", int(parts[1]), int(parts[-1]), comment)
+    # /<username>/[<topic_id>/]<msg_id>
+    if len(parts) >= 2 and re.fullmatch(r"[A-Za-z0-9_]{4,}", parts[0]) and parts[-1].isdigit():
+        return ("username", parts[0], int(parts[-1]), comment)
     raise ValueError(f"Unrecognized Telegram message link: {link}")
+
+
+async def get_discussion_group(client: TelegramClient, channel):
+    """Resolve the discussion supergroup linked to a channel (where comments live)."""
+    full = await client(GetFullChannelRequest(channel=channel))
+    linked_id = getattr(full.full_chat, "linked_chat_id", None)
+    if not linked_id:
+        raise ValueError("channel has no linked discussion group (no comments to fetch)")
+    for chat in full.chats:
+        if chat.id == linked_id:
+            return chat
+    return await client.get_entity(linked_id)
 
 
 async def get_channel(client: TelegramClient, cid: int):
@@ -255,8 +286,17 @@ async def run(args) -> None:
             sys.exit("Nothing to do. Give message link(s), or --chat/--range, or --list.")
 
         for link in args.targets:
-            kind, ref, mid = parse_link(link)
-            entity = await resolve_entity(client, kind, ref)
+            try:
+                kind, ref, mid, comment = parse_link(link)
+                entity = await resolve_entity(client, kind, ref)
+                if comment is not None:
+                    # The video is in a channel comment -> fetch it from the
+                    # linked discussion group, where its id is the comment id.
+                    entity = await get_discussion_group(client, entity)
+                    mid = comment
+            except ValueError as e:
+                print(f"[skip] {e}")
+                continue
             msg = await client.get_messages(entity, ids=mid)
             if not msg:
                 print(f"[skip] message not found: {link}")

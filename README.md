@@ -105,6 +105,9 @@ tgdl get https://t.me/c/1234567890/42
 # Several at once
 tgdl get https://t.me/c/1234567890/42 https://t.me/c/1234567890/57
 
+# A video posted in a channel's comments (note the ?comment=NNN)
+tgdl get "https://t.me/somechannel/352?comment=955"
+
 # A whole range of message ids from one chat (inclusive)
 tgdl get --chat https://t.me/c/1234567890 --range 100 180
 
@@ -189,6 +192,8 @@ capability being validated.
 | `tgdl: uv is not installed` | Install uv, or ensure it's on `PATH`. |
 | `tgdl: cannot locate the scripts` | You moved `tgdl` off the repo without recording home. `export TGDL_HOME=/path/to/repo`. |
 | `Unrecognized Telegram message link` | Use *Copy Message Link* (a `t.me/...` URL), not "Copy Link". |
+| Comment link seems ignored / `no such file` | Quote URLs containing `?comment=` — zsh treats `?` and `&` as globbing/job chars: `tgdl get "https://t.me/ch/352?comment=955"`. |
+| `channel has no linked discussion group` | The `?comment=` link points at a channel without comments enabled; re-copy the actual message link. |
 | `Cannot find any entity corresponding to "PeerChannel..."` | Fresh session hasn't cached the chat. Run `tgdl list` once, then retry. |
 | `[wait] rate limited ... sleeping Ns` | Telegram FloodWait. The tool auto-sleeps and resumes; just let it run. |
 | `[retry N/5] ...; resuming in Ns` | Transient network error. Auto-retried with backoff, resuming from the `.part`. |
