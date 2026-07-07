@@ -121,6 +121,12 @@ Files are written to `downloads/` by default, named `<chatid>_<msgid>_<orig>` so
 runs never collide. Re-running skips files already fully downloaded. Downloads
 default to **videos only**; pass `--all` for any media.
 
+**Interrupted downloads resume.** A download in progress is written to a
+`<name>.part` file and only renamed to its final name once complete, so a
+partial file never looks finished. If it's interrupted (Ctrl-C, dropped
+connection, FloodWait), just re-run the same command — it continues from where
+the `.part` left off instead of starting over. `.part` files are gitignored.
+
 Override the output directory globally with `TGDL_OUT`:
 
 ```bash

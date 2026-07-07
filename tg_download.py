@@ -42,6 +42,8 @@ from telethon.tl.types import PeerChannel
 from tqdm import tqdm
 
 SERVICE = "tgdl"
+# Telegram serves file parts on 4 KiB boundaries; resume offsets must align to it.
+CHUNK_ALIGN = 4096
 
 # https://t.me/c/<internal_id>/<optional_topic_id>/<msg_id>
 LINK_C = re.compile(r"(?:https?://)?t\.me/c/(\d+)/(?:\d+/)?(\d+)")
@@ -136,21 +138,55 @@ async def download_message(client, entity, msg, out_dir: Path, want_all: bool) -
 
     name = build_name(entity, msg)
     dest = out_dir / name
+    part = dest.with_name(dest.name + ".part")
     size = msg.file.size if msg.file else 0
+
+    # Nothing to do if a complete file already exists.
     if dest.exists() and size and dest.stat().st_size == size:
         print(f"[skip] already downloaded: {name}")
         return True
+    # A .part left fully downloaded by a previous run: just promote it.
+    if part.exists() and size and part.stat().st_size == size:
+        part.replace(dest)
+        print(f"[done] {dest}")
+        return True
 
     desc = (name[:27] + "...") if len(name) > 30 else name
-    with tqdm(total=size or 0, unit="B", unit_scale=True, desc=desc, leave=True) as bar:
-        def cb(cur, tot):
-            if tot:
-                bar.total = tot
-            bar.n = cur
-            bar.refresh()
 
-        path = await client.download_media(msg, file=str(dest), progress_callback=cb)
-    print(f"[done] {path}")
+    if not size:
+        # Unknown size (rare for video): plain, non-resumable download.
+        with tqdm(unit="B", unit_scale=True, desc=desc, leave=True) as bar:
+            def cb(cur, tot):
+                if tot:
+                    bar.total = tot
+                bar.n = cur
+                bar.refresh()
+
+            await client.download_media(msg, file=str(part), progress_callback=cb)
+        part.replace(dest)
+        print(f"[done] {dest}")
+        return True
+
+    # Resume: continue from the aligned end of any existing .part, discarding a
+    # possibly-truncated trailing chunk so re-requested bytes line up exactly.
+    have = part.stat().st_size if part.exists() else 0
+    offset = (have // CHUNK_ALIGN) * CHUNK_ALIGN if have < size else 0
+    resumed = offset > 0
+
+    with tqdm(total=size, initial=offset, unit="B", unit_scale=True, desc=desc, leave=True) as bar:
+        with open(part, "r+b" if part.exists() else "wb") as fh:
+            fh.seek(offset)
+            fh.truncate()
+            async for chunk in client.iter_download(msg.media, offset=offset):
+                fh.write(chunk)
+                bar.update(len(chunk))
+
+    final = part.stat().st_size
+    if final != size:
+        print(f"[warn] size mismatch for {name}: got {final}, expected {size}; kept {part.name}")
+        return False
+    part.replace(dest)
+    print(f"[done] {dest}" + (f" (resumed from {offset:,} B)" if resumed else ""))
     return True
 
 

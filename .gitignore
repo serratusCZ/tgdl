@@ -1,6 +1,8 @@
 # Downloaded media (never commit) — keep the dir, ignore its contents
 downloads/*
 !downloads/.gitkeep
+# Interrupted downloads (may be written to a custom --out dir too)
+*.part
 
 # Secrets / sessions (belt-and-suspenders; creds live in the Keychain, not here)
 *.session
