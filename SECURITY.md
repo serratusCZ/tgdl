@@ -53,11 +53,13 @@ Defense in depth: `.gitignore` still blocks `*.session`, `.env*`, and
 
 If you suspect the session leaked, or you're done using the tool:
 
-1. **Telegram app → Settings → Devices (Active Sessions)** → terminate the
-   session created by this tool. This immediately invalidates the string
-   everywhere — the most important step.
-2. `tgdl reset` — deletes the Keychain items locally.
-3. If `api_hash` may be compromised, reset it at <https://my.telegram.org>.
+1. **`tgdl logout`** — revokes the session on Telegram's servers (`auth.logOut`)
+   and then clears the Keychain. This immediately invalidates the string
+   everywhere — the most important step, and now a single command.
+   - If your Mac can't reach Telegram, do it from another device instead:
+     **Telegram app → Settings → Devices (Active Sessions)** → terminate the
+     session, then `tgdl reset` to clear the local Keychain items.
+2. If `api_hash` may be compromised, reset it at <https://my.telegram.org>.
 
 ## Out of scope
 

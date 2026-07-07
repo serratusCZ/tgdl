@@ -56,8 +56,9 @@ activate a virtualenv.
 - The stored **session string is equivalent to full access to your Telegram
   account** — treat it like a password. Anyone who steals it can act as you.
 - `.gitignore` also blocks `*.session`, `.env`, and `downloads/` as a safety net.
-- Revoke access any time: **Telegram app → Settings → Devices → terminate the
-  session**, then `tgdl reset` locally. Full details in [SECURITY.md](SECURITY.md).
+- Revoke access any time with **`tgdl logout`** (revokes the session on
+  Telegram's servers, then clears the Keychain). Full details in
+  [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -115,17 +116,23 @@ tgdl list                 # prints "id<TAB>name" for every chat
 
 # Grab non-video media too (photos, docs)
 tgdl get https://t.me/c/1234567890/42 --all
+
+# Preview a range without downloading (shows names + sizes)
+tgdl get --chat https://t.me/c/1234567890 --range 100 180 --dry-run
 ```
 
 Files are written to `downloads/` by default, named `<chatid>_<msgid>_<orig>` so
 runs never collide. Re-running skips files already fully downloaded. Downloads
-default to **videos only**; pass `--all` for any media.
+default to **videos only**; pass `--all` for any media, or `--dry-run` to see
+what would be fetched first.
 
 **Interrupted downloads resume.** A download in progress is written to a
 `<name>.part` file and only renamed to its final name once complete, so a
 partial file never looks finished. If it's interrupted (Ctrl-C, dropped
 connection, FloodWait), just re-run the same command — it continues from where
 the `.part` left off instead of starting over. `.part` files are gitignored.
+Transient network errors are retried automatically (up to 5 times, with
+backoff), each retry resuming from the `.part`.
 
 Override the output directory globally with `TGDL_OUT`:
 
@@ -184,28 +191,27 @@ capability being validated.
 | `Unrecognized Telegram message link` | Use *Copy Message Link* (a `t.me/...` URL), not "Copy Link". |
 | `Cannot find any entity corresponding to "PeerChannel..."` | Fresh session hasn't cached the chat. Run `tgdl list` once, then retry. |
 | `[wait] rate limited ... sleeping Ns` | Telegram FloodWait. The tool auto-sleeps and resumes; just let it run. |
+| `[retry N/5] ...; resuming in Ns` | Transient network error. Auto-retried with backoff, resuming from the `.part`. |
 | Keychain prompt "tgdl wants to use ..." | Expected on first access after a reboot. Click *Always Allow* to stop repeats. |
 | Slow downloads | `cryptg` should be installed automatically (it accelerates MTProto AES). Confirm it appears in `uv`'s resolution when running the script. |
 
-**Verbose Telethon logging** for deeper issues:
+**Verbose logging** for deeper issues — no need to edit anything:
 
 ```bash
-uv run --script tg_download.py --check   # add logging by editing the script:
-# import logging; logging.basicConfig(level=logging.DEBUG)
+tgdl get <link> -v     # info-level
+tgdl get <link> -vv    # debug-level (full Telethon trace)
 ```
 
-Inspect what's stored (values are printed by the Keychain, so do this privately):
+Reset or fully log out:
 
 ```bash
-security find-generic-password -s tgdl -a session -w   # prints the session string
+tgdl logout           # revoke the session on Telegram's servers, then clear creds
+tgdl reset            # local-only: clear creds without revoking (server session lives on)
 ```
 
-Reset everything and start over:
-
-```bash
-tgdl reset            # clears Keychain items
-# Then, in the Telegram app: Settings -> Devices -> terminate the session.
-```
+Prefer `tgdl logout` if a session may have leaked — it invalidates the string
+everywhere. Use `tgdl reset` only when the server is unreachable or you'll
+re-`setup` immediately.
 
 ---
 
@@ -244,14 +250,14 @@ There are more capable projects if you need bulk/bot/cross-platform workflows:
 - **Small and auditable.** Two short Python files + a bash dispatcher, focused
   on "give me the video at this link (or id range)".
 
-Trade-offs: macOS-only (Keychain), no partial-file resume, no bot mode, no
-type-filtered bulk scraping. Reach for `tdl` or `telegram_media_downloader`
-when you need those.
+Trade-offs: macOS-only (Keychain), no bot mode, no type-filtered bulk scraping,
+single-stream downloads. Reach for `tdl` or `telegram_media_downloader` when you
+need those.
 
 ## Uninstall
 
 ```bash
-tgdl reset                              # remove Keychain items
+tgdl logout                             # revoke session server-side + clear Keychain
 rm ~/bin/tgdl                           # remove the CLI you moved
 rm -f ~/.config/tgdl/home               # remove the recorded path
 # delete this repo directory when done

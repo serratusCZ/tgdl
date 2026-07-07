@@ -53,17 +53,21 @@ Usage:
   tgdl list                          list your chats as "id<TAB>name"
   tgdl get <link> [<link> ...]       download the video in each message
   tgdl get --chat <chat> --range A B download message ids A..B (inclusive)
-  tgdl reset                         delete stored credentials from the Keychain
+  tgdl logout                        revoke the session server-side, then clear creds
+  tgdl reset                         clear stored creds locally only (no revoke)
+  tgdl version                       print the version
   tgdl help                          show this help
 
 Options passed through to `get`:
   --out <dir>    output directory (default: $TGDL_HOME/downloads)
   --all          download any media, not just videos
+  --dry-run      show what would be downloaded, without downloading
+  -v, -vv        info / debug logging (Telethon)
 
 Examples:
   tgdl get https://t.me/c/1234567890/42
   tgdl get https://t.me/c/1234567890/42 https://t.me/c/1234567890/43 --out ~/Movies
-  tgdl get --chat https://t.me/c/1234567890 --range 100 180
+  tgdl get --chat https://t.me/c/1234567890 --range 100 180 --dry-run
 
 Locate scripts via $TGDL_HOME or ~/.config/tgdl/home if moving off the repo.
 EOF
@@ -80,9 +84,11 @@ shift || true
 case "$cmd" in
   setup)          exec uv run --script "$H/tg_setup.py" "$@" ;;
   reset)          exec uv run --script "$H/tg_setup.py" --reset ;;
+  logout)         exec uv run --script "$H/tg_setup.py" --logout ;;
   get|download|d) exec uv run --script "$H/tg_download.py" "$@" ;;
   list)           exec uv run --script "$H/tg_download.py" --list ;;
   check|test)     exec uv run --script "$H/tg_download.py" --check ;;
+  version|-V|--version) exec uv run --script "$H/tg_download.py" --version ;;
   help|-h|--help) show_help ;;
   *)              printf 'tgdl: unknown command: %s\n\n' "$cmd" >&2; show_help; exit 1 ;;
 esac

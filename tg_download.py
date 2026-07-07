@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import re
 import sys
@@ -36,14 +37,18 @@ from pathlib import Path
 
 import keyring
 from telethon import TelegramClient
-from telethon.errors import FloodWaitError
+from telethon.errors import FloodWaitError, ServerError
 from telethon.sessions import StringSession
 from telethon.tl.types import PeerChannel
 from tqdm import tqdm
 
 SERVICE = "tgdl"
+__version__ = "0.3.0"
 # Telegram serves file parts on 4 KiB boundaries; resume offsets must align to it.
 CHUNK_ALIGN = 4096
+# Transient failures worth retrying; the .part resume makes each retry cheap.
+TRANSIENT_ERRORS = (OSError, asyncio.TimeoutError, ServerError)
+MAX_RETRIES = 5
 
 # https://t.me/c/<internal_id>/<optional_topic_id>/<msg_id>
 LINK_C = re.compile(r"(?:https?://)?t\.me/c/(\d+)/(?:\d+/)?(\d+)")
@@ -121,6 +126,14 @@ def sanitize(name: str) -> str:
     return re.sub(r"[^\w.\-]+", "_", name).strip("_")[:120] or "file"
 
 
+def _human(n: float) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024:
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} PB"
+
+
 def build_name(entity, msg) -> str:
     ext = (msg.file.ext if msg.file else "") or ".bin"
     orig = getattr(msg.file, "name", None) if msg.file else None
@@ -130,7 +143,8 @@ def build_name(entity, msg) -> str:
     return sanitize(f"{cid}_{msg.id}{ext}")
 
 
-async def download_message(client, entity, msg, out_dir: Path, want_all: bool) -> bool:
+async def download_message(client, entity, msg, out_dir: Path, want_all: bool,
+                           dry_run: bool = False) -> bool:
     if not getattr(msg, "media", None):
         return False
     if not want_all and not is_video(msg):
@@ -140,6 +154,13 @@ async def download_message(client, entity, msg, out_dir: Path, want_all: bool) -
     dest = out_dir / name
     part = dest.with_name(dest.name + ".part")
     size = msg.file.size if msg.file else 0
+
+    if dry_run:
+        if dest.exists() and size and dest.stat().st_size == size:
+            print(f"[dry-run] have  {name}")
+            return False
+        print(f"[dry-run] get   {name}  ({_human(size)})")
+        return True
 
     # Nothing to do if a complete file already exists.
     if dest.exists() and size and dest.stat().st_size == size:
@@ -214,6 +235,8 @@ async def run(args) -> None:
             return
 
         downloaded = 0
+        verb = "Would download" if args.dry_run else "Downloaded"
+        tail = "" if args.dry_run else f" to {out_dir}"
 
         if args.chat and args.range:
             a, b = args.range
@@ -223,8 +246,9 @@ async def run(args) -> None:
             for msg in messages:
                 if msg is None:
                     continue
-                downloaded += await _guarded_download(client, entity, msg, out_dir, args.all)
-            print(f"Downloaded {downloaded} file(s) to {out_dir}")
+                downloaded += await _guarded_download(
+                    client, entity, msg, out_dir, args.all, args.dry_run)
+            print(f"{verb} {downloaded} file(s){tail}")
             return
 
         if not args.targets:
@@ -237,23 +261,37 @@ async def run(args) -> None:
             if not msg:
                 print(f"[skip] message not found: {link}")
                 continue
-            got = await _guarded_download(client, entity, msg, out_dir, args.all)
-            if not got and getattr(msg, "media", None):
+            got = await _guarded_download(
+                client, entity, msg, out_dir, args.all, args.dry_run)
+            if not got and not args.dry_run and getattr(msg, "media", None):
                 print(f"[skip] not a video: {link} (use --all for any media)")
             downloaded += got
-        print(f"Downloaded {downloaded} file(s) to {out_dir}")
+        print(f"{verb} {downloaded} file(s){tail}")
     finally:
         await client.disconnect()
 
 
-async def _guarded_download(client, entity, msg, out_dir, want_all) -> int:
-    """Download with FloodWait handling. Returns 1 on success, 0 otherwise."""
+async def _guarded_download(client, entity, msg, out_dir, want_all, dry_run=False) -> int:
+    """Download with FloodWait + transient-error retry. Returns 1 on success.
+
+    A retried download resumes from its .part file, so re-attempts are cheap.
+    """
+    attempt = 0
     while True:
         try:
-            return 1 if await download_message(client, entity, msg, out_dir, want_all) else 0
+            ok = await download_message(client, entity, msg, out_dir, want_all, dry_run)
+            return 1 if ok else 0
         except FloodWaitError as e:
             print(f"[wait] rate limited by Telegram, sleeping {e.seconds}s")
             await asyncio.sleep(e.seconds + 1)
+        except TRANSIENT_ERRORS as e:
+            attempt += 1
+            if attempt > MAX_RETRIES:
+                print(f"[error] giving up after {MAX_RETRIES} retries: {type(e).__name__}: {e}")
+                return 0
+            backoff = min(2 ** attempt, 30)
+            print(f"[retry {attempt}/{MAX_RETRIES}] {type(e).__name__}; resuming in {backoff}s")
+            await asyncio.sleep(backoff)
 
 
 def main() -> None:
@@ -265,9 +303,20 @@ def main() -> None:
     p.add_argument("--out", help="output directory (default: $TGDL_OUT or ./downloads)")
     p.add_argument("--all", action="store_true",
                    help="download any media, not just videos")
+    p.add_argument("--dry-run", action="store_true",
+                   help="list what would be downloaded without downloading")
     p.add_argument("--list", action="store_true", help="list your chats (id + name)")
     p.add_argument("--check", action="store_true", help="verify the stored session works")
+    p.add_argument("-v", "--verbose", action="count", default=0,
+                   help="-v for info, -vv for debug (Telethon) logging")
+    p.add_argument("--version", action="version", version=f"tgdl {__version__}")
     args = p.parse_args()
+
+    level = (logging.DEBUG if args.verbose >= 2
+             else logging.INFO if args.verbose == 1
+             else logging.WARNING)
+    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
+
     asyncio.run(run(args))
 
 

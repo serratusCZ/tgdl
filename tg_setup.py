@@ -41,6 +41,35 @@ def reset() -> None:
     print(f"Removed {removed} stored credential item(s) from the Keychain.")
 
 
+async def logout() -> None:
+    """Revoke the session on Telegram's servers, then clear the Keychain.
+
+    Unlike `reset` (local-only), this invalidates the session everywhere, so a
+    leaked session string becomes useless. Falls back to a local clear if the
+    session is already gone or the server is unreachable.
+    """
+    api_id = keyring.get_password(SERVICE, "api_id")
+    api_hash = keyring.get_password(SERVICE, "api_hash")
+    session = keyring.get_password(SERVICE, "session")
+
+    if session and api_id and api_hash:
+        client = TelegramClient(StringSession(session), int(api_id), api_hash)
+        await client.connect()
+        try:
+            if await client.is_user_authorized():
+                ok = await client.log_out()  # server-side auth.logOut
+                print("Server-side session revoked."
+                      if ok else "Server did not confirm logout; revoke it in the Telegram app.")
+            else:
+                print("Session already invalid server-side.")
+        finally:
+            await client.disconnect()
+    else:
+        print("No stored session found.")
+
+    reset()
+
+
 async def setup() -> None:
     print(
         "Telegram credential setup.\n"
@@ -80,8 +109,12 @@ async def setup() -> None:
 
 
 def main() -> None:
-    if "--reset" in sys.argv[1:]:
+    args = sys.argv[1:]
+    if "--reset" in args:
         reset()
+        return
+    if "--logout" in args:
+        asyncio.run(logout())
         return
     asyncio.run(setup())
 
