@@ -1,0 +1,42 @@
+name: Unsupported link format
+description: A t.me link tgdl doesn't recognize or handles wrong
+labels: ["link-format"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Comment links (`?comment=`) are supported as of v0.3+. If a link still
+        fails, tell us its shape. **Redact the numeric ids** — we only need the
+        pattern, not your groups.
+  - type: input
+    id: pattern
+    attributes:
+      label: Link pattern (ids redacted)
+      placeholder: "https://t.me/c/•••/•••?thread=•••"
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Where does the media live?
+      options:
+        - A normal channel/group post
+        - A comment on a channel post
+        - A forum / topic thread
+        - A reply inside a thread
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: What tgdl printed
+      description: Ideally re-run with `-vv`. Scrub anything sensitive.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: tgdl version
+      placeholder: tgdl 0.4.0
+    validations:
+      required: true

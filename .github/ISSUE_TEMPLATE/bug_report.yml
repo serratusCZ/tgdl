@@ -1,0 +1,45 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Do not paste secrets** — no `api_hash`, no
+        session string — and redact chat ids in links, e.g. `t.me/c/•••/42`.
+  - type: input
+    id: version
+    attributes:
+      label: tgdl version
+      description: Output of `tgdl version`.
+      placeholder: tgdl 0.4.0
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      description: Redact ids / usernames as needed.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs. actual
+      description: What you expected to happen, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output with -vv
+      description: Re-run with `-vv` and paste the relevant lines. Scrub anything sensitive.
+      render: shell
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "macOS 14.5, uv 0.6.9, zsh"
+    validations:
+      required: true

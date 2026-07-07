@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Syntax (python + bash)
+        run: |
+          python3 -m py_compile tg_download.py tg_setup.py
+          bash -n tgdl
+
+      - name: Lint (ruff)
+        run: uvx ruff check tg_download.py tg_setup.py
+
+      - name: Unit tests (pytest)
+        run: >
+          uv run --python ${{ matrix.python }}
+          --with pytest --with telethon --with keyring --with tqdm
+          pytest -q tests/

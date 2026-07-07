@@ -1,5 +1,6 @@
 # tgdl — Telegram restricted-video downloader (macOS)
 
+[![CI](https://github.com/serratusCZ/tgdl/actions/workflows/ci.yml/badge.svg)](https://github.com/serratusCZ/tgdl/actions/workflows/ci.yml)
 ![license](https://img.shields.io/github/license/serratusCZ/tgdl)
 ![platform](https://img.shields.io/badge/platform-macOS-lightgrey)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
@@ -147,15 +148,21 @@ export TGDL_OUT="$HOME/Movies/telegram"
 
 ## Testing
 
-There is no login-free unit surface (everything needs a real session), so tests
-are staged from cheapest to most involved.
+The pure logic (link parsing, filename sanitizing, video detection, sizing) is
+covered by unit tests that need no account; everything account-bound is verified
+by hand. Tiers, cheapest first:
 
-**1. Static checks (no account needed):**
+**1. Unit tests + static checks (no account needed) — this is what CI runs:**
 
 ```bash
 python3 -m py_compile tg_setup.py tg_download.py   # syntax
 bash -n tgdl                                        # bash parse
+uvx ruff check tg_download.py tg_setup.py           # lint
+uv run --with pytest --with telethon --with keyring --with tqdm pytest -q tests/
 ```
+
+Every push and PR runs the same steps on Python 3.10 and 3.12 via
+[GitHub Actions](.github/workflows/ci.yml).
 
 **2. Dependency resolution (downloads packages, no login):**
 
@@ -179,7 +186,8 @@ ls -lh downloads/
 ```
 
 Pick a *small* clip from a save-restricted group for step 4 — that is the exact
-capability being validated.
+capability being validated. See [CONTRIBUTING.md](CONTRIBUTING.md) to add tests
+or report an unrecognized link format.
 
 ---
 
