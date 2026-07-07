@@ -1,0 +1,18 @@
+# Downloaded media (never commit) — keep the dir, ignore its contents
+downloads/*
+!downloads/.gitkeep
+
+# Secrets / sessions (belt-and-suspenders; creds live in the Keychain, not here)
+*.session
+*.session-journal
+.env
+.env.*
+!.env.example
+
+# Python / uv
+__pycache__/
+*.pyc
+.venv/
+
+# macOS
+.DS_Store

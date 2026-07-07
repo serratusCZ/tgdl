@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+#
+# tgdl - CLI front-end for the Telegram restricted-video downloader.
+#
+# It only locates and runs the two uv scripts (tg_setup.py, tg_download.py).
+# Move this file anywhere on your PATH (e.g. ~/bin). It finds the scripts via,
+# in order:
+#   1. $TGDL_HOME environment variable
+#   2. ~/.config/tgdl/home  (auto-recorded the first time it runs co-located)
+#   3. the directory this script currently lives in (following symlinks)
+#
+set -euo pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tgdl"
+HOME_FILE="$CONFIG_DIR/home"
+
+die() { printf 'tgdl: %s\n' "$*" >&2; exit 1; }
+
+script_dir() {
+  local src="${BASH_SOURCE[0]}" dir
+  while [[ -h "$src" ]]; do
+    dir="$(cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd
+}
+
+find_home() {
+  if [[ -n "${TGDL_HOME:-}" && -f "$TGDL_HOME/tg_download.py" ]]; then
+    printf '%s' "$TGDL_HOME"; return 0
+  fi
+  if [[ -f "$HOME_FILE" ]]; then
+    local h; h="$(<"$HOME_FILE")"
+    [[ -f "$h/tg_download.py" ]] && { printf '%s' "$h"; return 0; }
+  fi
+  local self; self="$(script_dir)"
+  if [[ -f "$self/tg_download.py" ]]; then
+    mkdir -p "$CONFIG_DIR"
+    printf '%s' "$self" > "$HOME_FILE"   # remember it so this works after `mv`
+    printf '%s' "$self"; return 0
+  fi
+  return 1
+}
+
+show_help() {
+  cat <<'EOF'
+tgdl - download Telegram videos (works on save-restricted groups you belong to)
+
+Usage:
+  tgdl setup                         one-time login; stores creds in the Keychain
+  tgdl check                         verify the stored session works
+  tgdl list                          list your chats as "id<TAB>name"
+  tgdl get <link> [<link> ...]       download the video in each message
+  tgdl get --chat <chat> --range A B download message ids A..B (inclusive)
+  tgdl reset                         delete stored credentials from the Keychain
+  tgdl help                          show this help
+
+Options passed through to `get`:
+  --out <dir>    output directory (default: $TGDL_HOME/downloads)
+  --all          download any media, not just videos
+
+Examples:
+  tgdl get https://t.me/c/1234567890/42
+  tgdl get https://t.me/c/1234567890/42 https://t.me/c/1234567890/43 --out ~/Movies
+  tgdl get --chat https://t.me/c/1234567890 --range 100 180
+
+Locate scripts via $TGDL_HOME or ~/.config/tgdl/home if moving off the repo.
+EOF
+}
+
+command -v uv >/dev/null 2>&1 || die "uv is not installed. See https://docs.astral.sh/uv/"
+
+H="$(find_home)" || die "cannot locate the scripts. Set TGDL_HOME=/path/to/repo"
+export TGDL_OUT="${TGDL_OUT:-$H/downloads}"
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  setup)          exec uv run --script "$H/tg_setup.py" "$@" ;;
+  reset)          exec uv run --script "$H/tg_setup.py" --reset ;;
+  get|download|d) exec uv run --script "$H/tg_download.py" "$@" ;;
+  list)           exec uv run --script "$H/tg_download.py" --list ;;
+  check|test)     exec uv run --script "$H/tg_download.py" --check ;;
+  help|-h|--help) show_help ;;
+  *)              printf 'tgdl: unknown command: %s\n\n' "$cmd" >&2; show_help; exit 1 ;;
+esac
