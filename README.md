@@ -1,5 +1,14 @@
 # tgdl — Telegram restricted-video downloader (macOS)
 
+![license](https://img.shields.io/github/license/serratusCZ/tgdl)
+![platform](https://img.shields.io/badge/platform-macOS-lightgrey)
+![python](https://img.shields.io/badge/python-3.10%2B-blue)
+![runs with uv](https://img.shields.io/badge/runs%20with-uv-DE5FE9)
+![deps](https://img.shields.io/badge/setup-zero%20(PEP%20723)-success)
+
+> Two single-file [uv](https://docs.astral.sh/uv/) scripts + a bash CLI. No
+> virtualenv, no `pip install`, credentials in the macOS Keychain.
+
 Download videos from Telegram groups/channels you belong to, **including chats
 that have "restrict saving content" enabled**, straight from a Mac terminal.
 
@@ -208,6 +217,30 @@ The `tgdl` wrapper only handles command dispatch and locating the scripts, so
 the security-sensitive logic stays in the auditable Python files.
 
 ---
+
+## Alternatives & how this differs
+
+There are more capable projects if you need bulk/bot/cross-platform workflows:
+
+| Project | Lang | Scope |
+|---|---|---|
+| [iyear/tdl](https://github.com/iyear/tdl) | Go | Huge toolkit: download/upload, forward, export, restricted content. Config files. |
+| [Dineshkarthik/telegram_media_downloader](https://github.com/Dineshkarthik/telegram_media_downloader) | Python | YAML-configured bulk media download by type, with resume. |
+| [David256/rcdtool](https://github.com/David256/rcdtool) | Python | Closest analog: Telethon, downloads restricted content from a link via `.ini`/`.env`. |
+| [victorjalonzo/Telegram-Restricted-Content-Downloader](https://github.com/victorjalonzo/Telegram-Restricted-Content-Downloader) | Python | Pyrogram, restricted content from private groups you belong to. |
+
+`tgdl` deliberately trades features for **zero-setup and safer secrets**:
+
+- **Credentials in the macOS Keychain**, not a plaintext `.env`/`.ini`/`.yaml`
+  or a `.session` file on disk — the differentiator versus the tools above.
+- **No environment to manage.** PEP 723 uv scripts install their own deps on
+  first run; no `requirements.txt`, no venv, no Docker.
+- **Small and auditable.** Two short Python files + a bash dispatcher, focused
+  on "give me the video at this link (or id range)".
+
+Trade-offs: macOS-only (Keychain), no partial-file resume, no bot mode, no
+type-filtered bulk scraping. Reach for `tdl` or `telegram_media_downloader`
+when you need those.
 
 ## Uninstall
 
